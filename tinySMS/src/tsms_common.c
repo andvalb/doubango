@@ -297,13 +297,13 @@ int tsms_tpdu_message_set_userdata(tsms_tpdu_message_t* self, const tsk_buffer_t
     /* 3GPP TS 23.040 ==> 9.2.3.24 TP-User Data (TP-UD) */
     switch(alpha) {
     case tsms_alpha_7bit: {
-        self->udl = (udata->size) + (udata->size/7);
+        self->udl = (uint8_t)((udata->size) + (udata->size/7));
         self->ud = tsk_buffer_create(udata->data, udata->size);
     }
     break;
     case tsms_alpha_8bit:
     case tsms_alpha_ucs2: {
-        self->udl = udata->size;
+        self->udl = (uint8_t)udata->size;
         self->ud = tsk_buffer_create(udata->data, udata->size);
     }
     break;
