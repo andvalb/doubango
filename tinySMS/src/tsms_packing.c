@@ -39,6 +39,24 @@
 #include <stdbool.h> /* true/false */
 #include <stdint.h> /* uint16_t and etc... */
 
+const int i = 1;
+#define is_bigendian() ((*(char *)&i) == 0 )
+
+uint16_t reverseShort(const uint8_t *c) {
+    uint16_t s;
+    uint8_t *p = (uint8_t*)&s;
+
+    if (is_bigendian()) {
+        p[0] = c[0];
+        p[1] = c[1];
+    }
+    else {
+        p[0] = c[1];
+        p[1] = c[0];
+    }
+    return s;
+}
+
  /**@defgroup tsms_packing_group SMS Packing
  */
 
@@ -182,7 +200,8 @@ tsk_buffer_t* tsms_pack_to_ucs2(const char* utf8ptr)
     {
         if (!(utf8char & 0x80))
         {
-            utf16str[n++] = utf8char;
+            uint16_t chr16 = utf8char;
+            utf16str[n++] = reverseShort((uint8_t*)&chr16);
             continue;
         }
 
@@ -228,13 +247,15 @@ tsk_buffer_t* tsms_pack_to_ucs2(const char* utf8ptr)
 
         if (res <= 0xffff)
         {
-            utf16str[n++] = res;
+            utf16str[n++] = reverseShort((uint8_t*)&res);
             continue;
         }
 
         res -= 0x10000;
-        utf16str[n++] = ((res >> 10) & 0x3ff) + 0xd800;
-        utf16str[n++] = (res & 0x3ff) + 0xdc00;
+        uint16_t hi = ((res >> 10) & 0x3ff) + 0xd800;
+        uint16_t lo = (res & 0x3ff) + 0xdc00;
+        utf16str[n++] = reverseShort((uint8_t*)&hi);
+        utf16str[n++] = reverseShort((uint8_t*)&lo);
     }
     utf16str[n++] = 0;
 
@@ -348,7 +369,7 @@ size_t utf16_to_utf8_length(uint16_t* utf16, size_t len)
     size_t i = 0;
     uint16_t utfchar;
 
-    while ((2 * i < len) && (utfchar = utf16[i++]))
+    while ((2 * i < len) && (utfchar = reverseShort((uint8_t*)&utf16[i++])))
     {
         if (utfchar < 0x80)
         {
@@ -395,7 +416,7 @@ char* tsms_pack_from_ucs2(const void* ptr, tsk_size_t size)
         goto error;
     }
 
-    while (((2 * sizeof(char) * i) < size) && (utfchar = utf16[i++]))
+    while (((2 * sizeof(char) * i) < size) && (utfchar = reverseShort((uint8_t*)&utf16[i++])))
     {
         if (utfchar < 0x80)
         {
@@ -414,7 +435,7 @@ char* tsms_pack_from_ucs2(const void* ptr, tsk_size_t size)
         }
         else
         {
-            uint32_t utf4byteChar = 0x10000 + (((utfchar & 0x3ff) << 10) | (utf16[i++] & 0x3ff));
+            uint32_t utf4byteChar = 0x10000 + (((utfchar & 0x3ff) << 10) | (reverseShort((uint8_t*)&utf16[i++]) & 0x3ff));
             utf8str[n++] = (uint8_t)(0xf0 | (utf4byteChar >> 18));
             utf8str[n++] = (uint8_t)(0x80 | ((utf4byteChar >> 12) & 0x3f));
             utf8str[n++] = (uint8_t)(0x80 | ((utf4byteChar >> 6) & 0x3f));

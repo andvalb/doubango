@@ -47,15 +47,13 @@ test_message_7bit_t test_messages_7bit[] = {
 
 typedef struct test_message_utf16_s {
     const char* utf8;
-    const char16_t* utf16;
+    const char* utf16;
 }
 test_message_utf16_t;
 
 test_message_utf16_t test_messages_utf16[] = {
-     u8"Ещё одни самый новый тест 😅😂👍🏾🤷‍♂️👨‍💻🐁🙃💪🏽☺️👋🤘🏿👆👏",u"Ещё одни самый новый тест 😅😂👍🏾🤷‍♂️👨‍💻🐁🙃💪🏽☺️👋🤘🏿👆👏",
-     u8"😅😂👍🏾🤷‍♂️👨‍💻🐁🙃💪🏽☺️👋🤘🏿👆👏",u"😅😂👍🏾🤷‍♂️👨‍💻🐁🙃💪🏽☺️👋🤘🏿👆👏",
-     u8"Ещё одни самый новый тест 🙃💪🏽☺️👋🤘🏿👆👏",u"Ещё одни самый новый тест 🙃💪🏽☺️👋🤘🏿👆👏",
-     u8"Ещё одни самый новый тест",u"Ещё одни самый новый тест"
+     u8"Ascii test string", "\x00\x41\x00\x73\x00\x63\x00\x69\x00\x69\x00\x20\x00\x74\x00\x65\x00\x73\x00\x74\x00\x20\x00\x73\x00\x74\x00\x72\x00\x69\x00\x6e\x00\x67",
+     u8"Ещё одни самый новый тест 😅😂👍🏾🤷‍♂️👨‍💻🐁🙃💪🏽☺️👋🤘🏿👆👏","\x04\x15\x04\x49\x04\x51\x00\x20\x04\x3e\x04\x34\x04\x3d\x04\x38\x00\x20\x04\x41\x04\x30\x04\x3c\x04\x4b\x04\x39\x00\x20\x04\x3d\x04\x3e\x04\x32\x04\x4b\x04\x39\x00\x20\x04\x42\x04\x35\x04\x41\x04\x42\x00\x20\xd8\x3d\xde\x05\xd8\x3d\xde\x02\xd8\x3d\xdc\x4d\xd8\x3c\xdf\xfe\xd8\x3e\xdd\x37\x20\x0d\x26\x42\xfe\x0f\xd8\x3d\xdc\x68\x20\x0d\xd8\x3d\xdc\xbb\xd8\x3d\xdc\x01\xd8\x3d\xde\x43\xd8\x3d\xdc\xaa\xd8\x3c\xdf\xfd\x26\x3a\xfe\x0f\xd8\x3d\xdc\x4b\xd8\x3e\xdd\x18\xd8\x3c\xdf\xff\xd8\x3d\xdc\x46\xd8\x3d\xdc\x4f"
 };
 
 void test_7bit()
@@ -146,7 +144,7 @@ void test_utf16()
 
     /* From utf16 */
     for(i=0; i<sizeof(test_messages_utf16)/sizeof(test_message_utf16_t); i++) {
-        if((temp = tsms_pack_from_ucs2(test_messages_utf16[i].utf16, (tsk_size_t)U16bytes(test_messages_utf16[i].utf16)))) {
+        if((temp = tsms_pack_from_ucs2(test_messages_utf16[i].utf16, (tsk_size_t)U16bytes((char16_t*)test_messages_utf16[i].utf16)))) {
             if(!tsk_strequals(temp, test_messages_utf16[i].utf8)) {
                 TSK_DEBUG_INFO("tsms_pack_from_utf16(%s) Failed", test_messages_utf16[i].utf8);
             }
