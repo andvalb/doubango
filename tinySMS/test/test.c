@@ -67,10 +67,10 @@ tsk_bool_t bin_equals(const uint8_t* b1, const uint8_t* b2, size_t size)
 #include "test_rpdu.h"
 
 
-#define RUN_TEST_LOOP		1
+#define RUN_TEST_LOOP		0
 
 #define RUN_TEST_ALL		0
-#define RUN_TEST_PACKING	0
+#define RUN_TEST_PACKING	1
 #define RUN_TEST_TPDU		0
 #define RUN_TEST_RPDU		1
 

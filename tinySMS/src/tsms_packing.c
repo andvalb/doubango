@@ -36,6 +36,8 @@
 #include "tsk_debug.h"
 
 #include <string.h> /* strlen() */
+#include <stdbool.h> /* true/false */
+#include <stdint.h> /* uint16_t and etc... */
 
  /**@defgroup tsms_packing_group SMS Packing
  */
@@ -143,9 +145,9 @@ bail:
 * Get length of utf8 encoded string in therms of characters.
 * @param s Null-Terminated utf8 string.
 * @retval string size in chracters.
-* @sa @ref tsms_pack_from_ucs2
+* @sa @ref tsms_pack_from_utf-16
 */
-size_t utf8len(char* s)
+size_t utf8len(uint8_t* s)
 {
     size_t len = 0;
     for (; *s; ++s) if ((*s & 0xC0) != 0x80) ++len;
@@ -153,82 +155,94 @@ size_t utf8len(char* s)
 }
 
 /**@ingroup tsms_packing_group
-* Converts ASCII string to UCS-2(2-byte Universal Character Set) characters.
-* @param ascii Null-Terminated ascii string to convert.
-* @retval Buffer containing UCS-2 characters if succeed and @a Null otherwise.
-* @sa @ref tsms_pack_from_ucs2
+* Converts ASCII (or utf-8) string to utf-16 characters.
+* @param ascii or utf-8 Null-Terminated string to convert.
+* @retval Buffer containing utf-16 characters if succeed and @a Null otherwise.
+* @sa @ref tsms_pack_from_utf16
 */
-tsk_buffer_t* tsms_pack_to_ucs2(const char* mbStr)
+tsk_buffer_t* tsms_pack_to_ucs2(const char* utf8ptr)
 {
-    tsk_size_t len, size, retlen = 0;
-    unsigned char* ucs2 = tsk_null;
-    tsk_buffer_t* ret = tsk_null;
-    unsigned char* ucs2begin = tsk_null;
+    uint8_t* utf8 = (uint8_t*)utf8ptr;
+    size_t length = utf8len((uint8_t*)utf8);
+    uint8_t utf8char = 0;
+    uint16_t* utf16str = NULL; 
+    tsk_buffer_t* result = NULL;
+    size_t n = 0;
+    size_t i = 0;
 
-
-    if (!mbStr || !(utf8len((char*)mbStr) > 0)) {
-        TSK_DEBUG_WARN("Null or Empty gsm7bit buffer.");
-        goto bail;
-    }
-    /* length in characters */
-    len = utf8len((char*)mbStr);
-    /* size in bytes without \0 */
-    size = strlen(mbStr);
-    /* each character always encoded as 2 bytes (this is ucs2) and + 1 for \0*/
-    if (!(ucs2begin = ucs2 = (unsigned char*)tsk_calloc(len + 1, sizeof(uint8_t) * 2))) {
-        goto bail;
-    }
-
-    for (tsk_size_t i = 0; i < size && size > 1; )
+    //allocate for the worst case (4 byte utf16 char)
+    utf16str = (uint16_t*)tsk_calloc(sizeof(uint16_t)*2, (length + 1));
+    if(!utf16str)
     {
-        if ((*mbStr & 0x80) == 0)
-        {
-            *ucs2++ = 0;
-            *ucs2++ = *mbStr++;
-            i++;
-        }
-        else if ((*mbStr & 0xe0) == 0xc0)
-        {
-            *ucs2++ = (*mbStr >> 2) & 7;
-            *ucs2++ = ((mbStr[0] & 3) << 6) | (mbStr[1] & 0x3f);
-            mbStr += 2;
-            i += 2;
-
-        }
-        else if ((*mbStr & 0xf0) == 0xe0)
-        {
-            *ucs2++ = (*mbStr << 4) | ((mbStr[1] >> 2) & 0x0f);
-            *ucs2++ = (mbStr[1] << 6) | (mbStr[2] & 0x3f);
-            mbStr += 3;
-            i += 3;
-        }
-        else if ((*mbStr & 0xf8) == 0xf0)
-        {
-            mbStr += 4;
-            i += 4;
-        }
-        else if ((*mbStr & 0xfc) == 0xf8)
-        {
-            mbStr += 5;
-            i += 5;
-        }
-        else if ((*mbStr & 0xfe) == 0xfc)
-        {
-            mbStr += 6;
-            i += 6;
-        }
-        else
-        {
-            mbStr++;
-            i++;
-        }
+        TSK_DEBUG_WARN("Failed to allocate buffer.");
+        goto error;
     }
-    /* create buffer */
-    ret = (tsk_buffer_t*)tsk_buffer_create(ucs2begin, (ucs2 - ucs2begin) + 1);
-    TSK_FREE(ucs2begin);
 
-bail:
-    return ret;
+    while (utf8char = utf8[i++])
+    {
+        if (!(utf8char & 0x80))
+        {
+            utf16str[n++] = utf8char;
+            continue;
+        }
+
+        // Get byte length
+        size_t extra = 0;
+        struct { 
+            uint8_t bits;
+            uint8_t mask;
+        } chars[] = { 
+            {5,0x06},
+            {4,0x0e},
+            {3,0x1e},
+            {2,0x3e},
+            {1,0x7e},
+        };
+        for (int j = 0; j < sizeof(chars) / sizeof(*chars); j++)
+        {
+            extra = ((utf8char >> chars[j].bits) == chars[j].mask) ? j + 1 : 0;
+            if (extra) break;
+        }
+        if (!extra)
+        {
+            continue;
+        }
+        uint32_t mask = (1 << (8 - extra - 1)) - 1;
+        uint32_t res = utf8char & mask;
+        uint32_t next;
+        size_t count = 0;
+
+        for (count = 0; count < extra; count++)
+        {
+            next = utf8[i++];
+            if (next >> 6 != 0x02)
+                break;
+            res = (res << 6) | (next & 0x3f);
+        }
+
+        if (count != extra)
+        {
+            i--;
+            continue;
+        }
+
+        if (res <= 0xffff)
+        {
+            utf16str[n++] = res;
+            continue;
+        }
+
+        res -= 0x10000;
+        utf16str[n++] = ((res >> 10) & 0x3ff) + 0xd800;
+        utf16str[n++] = (res & 0x3ff) + 0xdc00;
+    }
+    utf16str[n++] = 0;
+
+    result = (tsk_buffer_t*)tsk_buffer_create(utf16str, (n * sizeof(uint16_t)));
+    TSK_FREE(utf16str);
+
+error:
+    return result;
 }
 
 /**@ingroup tsms_packing_group
@@ -322,116 +336,95 @@ bail:
 }
 
 /**
-* Get length of utf8 string in bytes.
-* @param p Buffer containing UCS-2 characters to convert.
-* @param len The size of the buffer.
-* @param max The size limit of the buffer.
-* @retval size of the utf8 string in bytes.
+* Get length of utf8 string in bytes including \0.
+* @param utf16 Buffer containing UTF-16 characters to convert.
+* @param len The size of the buffer in bytes.
+* @retval size of the utf8 string in bytes including \0.
 * @sa @ref tsms_pack_to_ucs2
 */
-size_t ucs2_to_utf8_length(unsigned char* p, int len, int max)
+size_t utf16_to_utf8_length(uint16_t* utf16, size_t len)
 {
-    size_t s = 0;
-    int i;
+    size_t size = 0;
+    size_t i = 0;
+    uint16_t utfchar;
 
-    len &= -2;
-    for (i = 0; i < len && max > 3; i += 2)
+    while ((2 * i < len) && (utfchar = utf16[i++]))
     {
-        if (p[i] == 0 && p[i + 1] <= 0x7f)
+        if (utfchar < 0x80)
         {
-            s += 1;
-            max--;
+            size++;
         }
-        else if ((p[i] & 0xf8) == 0)
+        else if (utfchar < 0x800)
         {
-            s += 2;
+            size += 2;
+        }
+        else if ((utfchar < 0xd800) || (utfchar >= 0xe000))
+        {
+            size += 3;
         }
         else
         {
-            s += 3;
+            size += 4;
         }
     }
-
-    if (i < len)
-    {
-        if (p[i] == 0 && p[i + 1] <= 0x7f && max > 1)
-        {
-            s += 1;
-            max--;
-        }
-        else if ((p[i] & 0xf8) == 0 && max > 2)
-        {
-            s += 2;
-        }
-    }
-    return s;
+    return size + 1;
 }
 
 /**@ingroup tsms_packing_group
-* Converts UCS-2(2-byte Universal Character Set) characters to ASCII string.
-* @param ucs2 Buffer containing UCS-2 characters to convert.
-* @param size The size of the buffer.
-* @retval Null-terminated ASCII string, ready to be shown to the screen.
-* @sa @ref tsms_pack_to_ucs2
+* Converts UTF-16 characters to utf-8 string.
+* @param ptr Buffer containing UTF-16 characters to convert.
+* @param size The size of the buffer (bytes).
+* @retval Null-terminated utf-8 string, ready to be shown to the screen.
+* @sa @ref tsms_pack_to_utf16
 */
-char* tsms_pack_from_ucs2(const void* ucs2ptr, tsk_size_t size)
+char* tsms_pack_from_ucs2(const void* ptr, tsk_size_t size)
 {
-    register tsk_size_t i;
-    char* utf8str = tsk_null;
-    unsigned char* ucs2char = (unsigned char*)ucs2ptr;
-    char* utf8begin = tsk_null;
-    size_t max = (size * 3) + 1; //worst case
+    const uint16_t* utf16 = (uint16_t*)ptr;
+    char* utf8str = (char*)NULL;
+    size_t n = 0;
+    size_t i = 0;
+    uint16_t utfchar = 0;
 
-    size_t len = ucs2_to_utf8_length(ucs2char, size, max);
-
-    if (!ucs2char || !size) {
+    if (!utf16 || !size) {
         TSK_DEBUG_WARN("Null or Empty gsm8bit buffer.");
-        goto bail;
+        goto error;
     }
 
-    if (!(utf8str = (char*)tsk_calloc(len + 1, sizeof(uint8_t)))) {
-        goto bail;
+    if (!(utf8str = (char*)tsk_calloc(utf16_to_utf8_length((uint16_t*)utf16, size), sizeof(char)))) {
+        TSK_DEBUG_WARN("Failed to allocate buffer.");
+        goto error;
     }
-    utf8begin = utf8str;
 
-    size &= -2;
-    for (i = 0; i < size && max > 3; i += 2)
+    while (((2 * sizeof(char) * i) < size) && (utfchar = utf16[i++]))
     {
-        if (ucs2char[i] == 0 && ucs2char[i + 1] <= 0x7f)
+        if (utfchar < 0x80)
         {
-            *utf8str++ = ucs2char[i + 1];
-            max--;
+            utf8str[n++] = (uint8_t)utfchar;
         }
-        else if ((ucs2char[i] & 0xf8) == 0)
+        else if (utfchar < 0x800)
         {
-            *utf8str++ = 0xc0 | (ucs2char[i] << 2) | (ucs2char[i + 1] >> 6);
-            *utf8str++ = 0x80 | (ucs2char[i + 1] & 0x3f);
+            utf8str[n++] = (uint8_t)(0xc0 | (utfchar >> 6));
+            utf8str[n++] = (uint8_t)(0x80 | (utfchar & 0x3f));
+        }
+        else if ((utfchar < 0xd800) || (utfchar >= 0xe000))
+        {
+            utf8str[n++] = (uint8_t)(0xe0 | (utfchar >> 12));
+            utf8str[n++] = (uint8_t)(0x80 | ((utfchar >> 6) & 0x3f));
+            utf8str[n++] = (uint8_t)(0x80 | (utfchar & 0x3f));
         }
         else
         {
-            *utf8str++ = 0xe0 | (ucs2char[i] >> 4);
-            *utf8str++ = 0x80 | ((ucs2char[i] & 0x0f) << 2) | (ucs2char[i + 1] >> 6);
-            *utf8str++ = 0x80 | (ucs2char[i + 1] & 0x3f);
+            uint32_t utf4byteChar = 0x10000 + (((utfchar & 0x3ff) << 10) | (utf16[i++] & 0x3ff));
+            utf8str[n++] = (uint8_t)(0xf0 | (utf4byteChar >> 18));
+            utf8str[n++] = (uint8_t)(0x80 | ((utf4byteChar >> 12) & 0x3f));
+            utf8str[n++] = (uint8_t)(0x80 | ((utf4byteChar >> 6) & 0x3f));
+            utf8str[n++] = (uint8_t)(0x80 | (utf4byteChar & 0x3f));
         }
     }
-
-    if (i < size)
-    {
-        if (ucs2char[i] == 0 && ucs2char[i + 1] <= 0x7f && max > 1)
-        {
-            *utf8str++ = ucs2char[1];
-            max--;
-        }
-        else if ((ucs2char[i] & 0xf8) == 0 && max > 2)
-        {
-            *utf8str++ = 0xc0 | (ucs2char[i] << 2) | (ucs2char[i + 1] >> 6);
-            *utf8str++ = 0x80 | (ucs2char[i + 1] & 0x3f);
-        }
-    }
-
-    *utf8str++ = 0;
-bail:
-    return utf8begin;
+    //C string terminator.
+    utf8str[n] = 0;
+error:
+    return utf8str;
 }
 
 /**@ingroup tsms_packing_group

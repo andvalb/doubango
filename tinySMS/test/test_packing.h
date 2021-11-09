@@ -1,4 +1,4 @@
-/*
+﻿/*
 * Copyright (C) 2009 Mamadou Diop.
 *
 * Contact: Mamadou Diop <diopmamadou(at)doubango.org>
@@ -22,6 +22,9 @@
 #ifndef _TEST_SMSPACKING_H
 #define _TEST_SMSPACKING_H
 
+#include <wchar.h>
+#include <uchar.h>
+
 typedef struct test_message_7bit_s {
     const char* ascii;
     const char* _7bit;
@@ -40,6 +43,19 @@ test_message_7bit_t test_messages_7bit[] = {
     "This is a test sms message","\x54\x74\x7A\x0E\x4A\xCF\x41\x61\x10\xBD\x3C\xA7\x83\xE6\xED\x39\xA8\x5D\x9E\xCF\xC3\xE7\x32",
     "salut","\xF3\x30\xBB\x4E\x07",
     "hellohello","\xE8\x32\x9B\xFD\x46\x97\xD9\xEC\x37",
+};
+
+typedef struct test_message_utf16_s {
+    const char* utf8;
+    const char16_t* utf16;
+}
+test_message_utf16_t;
+
+test_message_utf16_t test_messages_utf16[] = {
+     u8"Ещё одни самый новый тест 😅😂👍🏾🤷‍♂️👨‍💻🐁🙃💪🏽☺️👋🤘🏿👆👏",u"Ещё одни самый новый тест 😅😂👍🏾🤷‍♂️👨‍💻🐁🙃💪🏽☺️👋🤘🏿👆👏",
+     u8"😅😂👍🏾🤷‍♂️👨‍💻🐁🙃💪🏽☺️👋🤘🏿👆👏",u"😅😂👍🏾🤷‍♂️👨‍💻🐁🙃💪🏽☺️👋🤘🏿👆👏",
+     u8"Ещё одни самый новый тест 🙃💪🏽☺️👋🤘🏿👆👏",u"Ещё одни самый новый тест 🙃💪🏽☺️👋🤘🏿👆👏",
+     u8"Ещё одни самый новый тест",u"Ещё одни самый новый тест"
 };
 
 void test_7bit()
@@ -102,27 +118,37 @@ void test_8bit()
     }
 }
 
-void test_ucs2()
+size_t U16bytes(const char16_t* str)
+{
+    size_t len = 0;
+    char16_t* p = (char16_t*)str;
+    while (*p != 0) p++;
+    len = (char*)p - (char*)str;
+    return len;
+}
+
+void test_utf16()
 {
     tsk_size_t i;
     tsk_buffer_t* buffer;
     char* temp;
 
-    /* To ucs2 */
-    for(i=0; i<sizeof(test_messages_7bit)/sizeof(test_message_7bit_t); i++) {
-        if((buffer = tsms_pack_to_ucs2(test_messages_7bit[i].ascii))) {
-            if(!tsk_strequals(buffer->data, test_messages_7bit[i].ascii)) {
-                TSK_DEBUG_INFO("tsms_pack_to_ucs2(%s) Failed", test_messages_7bit[i].ascii);
+    /* To utf16 */
+    for(i=0; i<sizeof(test_messages_utf16)/sizeof(test_message_utf16_t); i++) {
+
+        if((buffer = tsms_pack_to_ucs2(test_messages_utf16[i].utf8))) {
+            if(!tsk_strequals(buffer->data, test_messages_utf16[i].utf16)) {
+                TSK_DEBUG_INFO("tsms_pack_to_utf16(%s) Failed", test_messages_utf16[i].utf8);
             }
             TSK_OBJECT_SAFE_FREE(buffer);
         }
     }
 
-    /* From ucs2 */
-    for(i=0; i<sizeof(test_messages_7bit)/sizeof(test_message_7bit_t); i++) {
-        if((temp = tsms_pack_from_ucs2(test_messages_7bit[i].ascii, (tsk_size_t)tsk_strlen(test_messages_7bit[i].ascii)))) {
-            if(!tsk_strequals(temp, test_messages_7bit[i].ascii)) {
-                TSK_DEBUG_INFO("tsms_pack_from_ucs2(%s) Failed", test_messages_7bit[i].ascii);
+    /* From utf16 */
+    for(i=0; i<sizeof(test_messages_utf16)/sizeof(test_message_utf16_t); i++) {
+        if((temp = tsms_pack_from_ucs2(test_messages_utf16[i].utf16, (tsk_size_t)U16bytes(test_messages_utf16[i].utf16)))) {
+            if(!tsk_strequals(temp, test_messages_utf16[i].utf8)) {
+                TSK_DEBUG_INFO("tsms_pack_from_utf16(%s) Failed", test_messages_utf16[i].utf8);
             }
             TSK_FREE(temp);
         }
@@ -131,7 +157,7 @@ void test_ucs2()
 
 void test_packing()
 {
-    test_ucs2();
+    test_utf16();
     test_8bit();
     test_7bit();
 }
